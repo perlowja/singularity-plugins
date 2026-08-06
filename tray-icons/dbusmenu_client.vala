@@ -110,9 +110,24 @@ namespace Singularity.Plugins.TrayIcons {
                 if (!enabled) continue;
 
                 int captured_id = id;
-                menu.add_item(label, icon_name, () => {
-                    activate_item(captured_id);
-                });
+                if (icon_name != null && icon_name.length > 0) {
+                    menu.add_item(label, icon_name, () => {
+                        activate_item(captured_id);
+                    });
+                } else {
+                    // Qt/KDE apps ship menu icons as serialized PNG in icon-data
+                    // rather than a themed icon-name (#221), so fall back to that.
+                    var gicon = get_prop_icon_data(props);
+                    if (gicon != null) {
+                        menu.add_item_gicon(label, gicon, () => {
+                            activate_item(captured_id);
+                        });
+                    } else {
+                        menu.add_item(label, null, () => {
+                            activate_item(captured_id);
+                        });
+                    }
+                }
                 last_was_separator = false;
             }
         }
@@ -140,6 +155,19 @@ namespace Singularity.Plugins.TrayIcons {
             while (iter.next("{sv}", out k, out v)) {
                 if (k == key && v.is_of_type(VariantType.STRING))
                     return v.get_string();
+            }
+            return null;
+        }
+
+        private GLib.Icon? get_prop_icon_data(Variant props) {
+            var iter = new VariantIter(props);
+            string k; Variant v;
+            while (iter.next("{sv}", out k, out v)) {
+                if (k == "icon-data" && v.is_of_type(new VariantType("ay"))) {
+                    var bytes = v.get_data_as_bytes();
+                    if (bytes != null && bytes.get_size() > 0)
+                        return new BytesIcon(bytes);
+                }
             }
             return null;
         }

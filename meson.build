@@ -8,10 +8,18 @@ add_project_arguments('--pkg=posix', language: 'vala')
 libsingularity_dep = dependency('singularity-1.0',
   fallback: ['libsingularity', 'libsingularity_dep']
 )
+system_dep = dependency('singularity-system-1.0',
+  fallback: ['libsingularity', 'libsingularity_system_dep']
+)
 
 if not meson.is_subproject() and libsingularity_dep.type_name() == 'internal'
   libsingularity_vapi_dir = join_paths(meson.project_build_root(), 'subprojects', 'libsingularity')
   add_project_arguments(['--vapidir=' + libsingularity_vapi_dir], language: 'vala')
+endif
+
+if system_dep.type_name() == 'internal'
+  system_vapi_dir = join_paths(meson.current_source_dir(), '..', 'libsingularity', 'src', 'vapi')
+  add_project_arguments(['--vapidir=' + system_vapi_dir], language: 'vala')
 endif
 
 subdir('status-monitor')

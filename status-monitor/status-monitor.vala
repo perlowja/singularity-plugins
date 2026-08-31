@@ -35,11 +35,16 @@ public class StatusMonitorPlugin : Object, Singularity.Plugin {
 class StatusWidget : Box {
     private DrawingArea cpu_chart;
     private DrawingArea ram_chart;
+    private DrawingArea gpu_chart;
     private double[] cpu_history;
     private double[] ram_history;
+    private double[] gpu_history;
     private int history_size = 60;
     private Label cpu_label;
     private Label ram_label;
+    private Label gpu_label;
+    private Box gpu_box;
+    private SensorMonitor gpu_monitor;
     private ulong last_total = 0;
     private ulong last_idle = 0;
     private uint _timer_id = 0;
@@ -50,12 +55,20 @@ class StatusWidget : Box {
 
         cpu_history = new double[history_size];
         ram_history = new double[history_size];
+        gpu_history = new double[history_size];
 
         var cpu_box = create_chart_box("CPU", out cpu_chart, out cpu_label);
         var ram_box = create_chart_box("Memory", out ram_chart, out ram_label);
+        gpu_box = create_chart_box("GPU", out gpu_chart, out gpu_label);
+        gpu_box.visible = false;
 
         append(cpu_box);
         append(ram_box);
+        append(gpu_box);
+
+        gpu_monitor = new SensorMonitor();
+        gpu_monitor.updated.connect(update_gpu);
+        gpu_monitor.start(1);
 
         _timer_id = Timeout.add(1000, update_stats);
         update_stats();
@@ -66,6 +79,21 @@ class StatusWidget : Box {
             Source.remove(_timer_id);
             _timer_id = 0;
         }
+        gpu_monitor.stop();
+    }
+
+    private void update_gpu() {
+        double value = gpu_monitor.gpu_utilization;
+        gpu_box.visible = value >= 0.0;
+        if (value < 0.0) {
+            return;
+        }
+        for (int i = 0; i < history_size - 1; i++) {
+            gpu_history[i] = gpu_history[i + 1];
+        }
+        gpu_history[history_size - 1] = value;
+        gpu_label.label = "%d%%".printf((int) (value * 100));
+        gpu_chart.queue_draw();
     }
 
     private Box create_chart_box(string title, out DrawingArea chart, out Label label) {
@@ -167,9 +195,11 @@ class StatusWidget : Box {
     }
 
     private void draw_chart(DrawingArea area, Context cr, int w, int h) {
-        double[] data = (area == cpu_chart) ? cpu_history : ram_history;
+        double[] data = area == cpu_chart ? cpu_history
+            : area == gpu_chart ? gpu_history : ram_history;
         Gdk.RGBA color = {};
         if (area == cpu_chart) color.parse("#3584e4");
+        else if (area == gpu_chart) color.parse("#f39c12");
         else color.parse("#9b59b6");
 
         double step = (double)w / (double)(history_size - 1);

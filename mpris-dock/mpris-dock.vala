@@ -12,19 +12,6 @@ public void peas_register_types(TypeModule module) {
 
 namespace MprisDock {
 
-    [DBus (name = "org.freedesktop.DBus")]
-    public interface FreedesktopDBus : Object {
-        public abstract string[] ListNames() throws IOError;
-    }
-
-    [DBus (name = "org.mpris.MediaPlayer2.Player")]
-    public interface MprisPlayer : Object {
-        public abstract string playback_status { owned get; }
-        public abstract void next() throws IOError;
-        public abstract void previous() throws IOError;
-        public abstract void play_pause() throws IOError;
-    }
-
     public class Extension : Object, Singularity.DockItemExtension {
         // Cached state, refreshed every poll tick.
         public class Entry {
@@ -40,20 +27,27 @@ namespace MprisDock {
         private uint _poll_id = 0;
         private DBusConnection? _conn = null;
         private uint _props_sub_id = 0;
+        private bool _poll_running = false;
+        private bool _poll_again = false;
 
         public Extension() {
-            poll();
-            // The 2s poll catches players appearing/disappearing and cover art.
-            _poll_id = GLib.Timeout.add(2000, () => { poll(); return GLib.Source.CONTINUE; });
-            // React instantly to playback-status / metadata changes from any
-            // player instead of waiting for the next poll tick (which made the
-            // play/pause icon and controls update late).
+            setup.begin();
+            _poll_id = GLib.Timeout.add(2000, () => {
+                request_poll();
+                return GLib.Source.CONTINUE;
+            });
+        }
+
+        private async void setup() {
             try {
-                _conn = Bus.get_sync(BusType.SESSION);
+                _conn = yield Bus.get(BusType.SESSION);
                 _props_sub_id = _conn.signal_subscribe(
                     null, "org.freedesktop.DBus.Properties", "PropertiesChanged",
                     "/org/mpris/MediaPlayer2", null, DBusSignalFlags.NONE,
-                    (conn, sender, path, iface, sig, args) => { poll(); });
+                    (conn, sender, path, iface, sig, args) => {
+                        request_poll();
+                    });
+                request_poll();
             } catch (Error e) {}
         }
 
@@ -75,12 +69,6 @@ namespace MprisDock {
         public Gtk.Widget? create_suffix_widget(string app_id) {
             var e = entry_for(app_id);
             if (e == null) return null;
-            MprisPlayer? player = null;
-            try {
-                player = Bus.get_proxy_sync<MprisPlayer>(BusType.SESSION, e.mpris_name, "/org/mpris/MediaPlayer2");
-            } catch (Error err) {
-                return null;
-            }
             var box = new Box(Orientation.HORIZONTAL, 2);
             box.valign = Align.CENTER;
             box.add_css_class("dock-mpris-controls");
@@ -88,7 +76,7 @@ namespace MprisDock {
             var prev = new Button.from_icon_name("media-skip-backward-symbolic");
             prev.has_frame = false;
             prev.add_css_class("dock-suffix-button");
-            prev.clicked.connect(() => { try { player.previous(); } catch {} });
+            prev.clicked.connect(() => player_action(e.mpris_name, "Previous"));
             box.append(prev);
 
             string play_icon = e.status == "Playing"
@@ -97,13 +85,13 @@ namespace MprisDock {
             var pp = new Button.from_icon_name(play_icon);
             pp.has_frame = false;
             pp.add_css_class("dock-suffix-button");
-            pp.clicked.connect(() => { try { player.play_pause(); } catch {} });
+            pp.clicked.connect(() => player_action(e.mpris_name, "PlayPause"));
             box.append(pp);
 
             var next = new Button.from_icon_name("media-skip-forward-symbolic");
             next.has_frame = false;
             next.add_css_class("dock-suffix-button");
-            next.clicked.connect(() => { try { player.next(); } catch {} });
+            next.clicked.connect(() => player_action(e.mpris_name, "Next"));
             box.append(next);
 
             return box;
@@ -121,63 +109,83 @@ namespace MprisDock {
             return null;
         }
 
-        private void poll() {
+        private void player_action(string name, string method) {
+            if (_conn == null) return;
+            _conn.call.begin(name, "/org/mpris/MediaPlayer2",
+                "org.mpris.MediaPlayer2.Player", method, null, null,
+                DBusCallFlags.NONE, 1000, null, null);
+        }
+
+        private void request_poll() {
+            if (_poll_running) {
+                _poll_again = true;
+                return;
+            }
+            poll.begin();
+        }
+
+        private async Variant? fetch_property(string name, string iface,
+                                              string property) {
+            var conn = _conn;
+            if (conn == null) return null;
+            try {
+                var result = yield conn.call(name, "/org/mpris/MediaPlayer2",
+                    "org.freedesktop.DBus.Properties", "Get",
+                    new Variant("(ss)", iface, property),
+                    new VariantType("(v)"), DBusCallFlags.NONE, 500, null);
+                return result.get_child_value(0).get_variant();
+            } catch (Error e) {
+                return null;
+            }
+        }
+
+        private async void poll() {
+            var conn = _conn;
+            if (conn == null) return;
+            _poll_running = true;
             var new_map = new HashMap<string, Entry>();
             try {
-                var dbus = Bus.get_proxy_sync<FreedesktopDBus>(BusType.SESSION, "org.freedesktop.DBus", "/org/freedesktop/DBus");
-                string[] names = dbus.ListNames();
-                foreach (string name in names) {
+                var result = yield conn.call(
+                    "org.freedesktop.DBus", "/org/freedesktop/DBus",
+                    "org.freedesktop.DBus", "ListNames", null,
+                    new VariantType("(as)"), DBusCallFlags.NONE, 1000, null);
+                VariantIter iter;
+                result.get("(as)", out iter);
+                string? name;
+                while (iter.next("s", out name)) {
+                    if (name == null) continue;
                     if (!name.has_prefix("org.mpris.MediaPlayer2.")) continue;
-                    try {
-                        var entry = new Entry();
-                        entry.mpris_name = name;
-                        entry.player_id = name.substring("org.mpris.MediaPlayer2.".length).down();
+                    var entry = new Entry();
+                    entry.mpris_name = name;
+                    entry.player_id = name.substring("org.mpris.MediaPlayer2.".length).down();
+                    entry.identity = "";
+                    entry.status = "Stopped";
+                    entry.art_url = "";
+                    var identity = yield fetch_property(name,
+                        "org.mpris.MediaPlayer2", "Identity");
+                    if (identity != null
+                            && identity.is_of_type(VariantType.STRING))
+                        entry.identity = identity.get_string().down();
+                    var status = yield fetch_property(name,
+                        "org.mpris.MediaPlayer2.Player", "PlaybackStatus");
+                    if (status != null && status.is_of_type(VariantType.STRING))
+                        entry.status = status.get_string();
+                    var metadata = yield fetch_property(name,
+                        "org.mpris.MediaPlayer2.Player", "Metadata");
+                    if (metadata != null) {
+                        var art = metadata.lookup_value("mpris:artUrl", null);
+                        if (art != null && art.is_of_type(VariantType.STRING))
+                            entry.art_url = art.get_string();
+                    }
+                    if (entry.status == "Stopped") continue;
 
-                        var bus = Bus.get_sync(BusType.SESSION);
-                        try {
-                            var v = bus.call_sync(name, "/org/mpris/MediaPlayer2",
-                                "org.freedesktop.DBus.Properties", "Get",
-                                new Variant("(ss)", "org.mpris.MediaPlayer2", "Identity"),
-                                null, GLib.DBusCallFlags.NONE, 300);
-                            entry.identity = v.get_child_value(0).get_variant().get_string().down();
-                        } catch { entry.identity = ""; }
-
-                        try {
-                            var st = bus.call_sync(name, "/org/mpris/MediaPlayer2",
-                                "org.freedesktop.DBus.Properties", "Get",
-                                new Variant("(ss)", "org.mpris.MediaPlayer2.Player", "PlaybackStatus"),
-                                null, GLib.DBusCallFlags.NONE, 300);
-                            entry.status = st.get_child_value(0).get_variant().get_string();
-                        } catch { entry.status = "Stopped"; }
-
-                        try {
-                            var meta = bus.call_sync(name, "/org/mpris/MediaPlayer2",
-                                "org.freedesktop.DBus.Properties", "Get",
-                                new Variant("(ss)", "org.mpris.MediaPlayer2.Player", "Metadata"),
-                                null, GLib.DBusCallFlags.NONE, 300);
-                            var v = meta.get_child_value(0).get_variant();
-                            if (v.is_of_type(VariantType.DICTIONARY)) {
-                                var art_val = v.lookup_value("mpris:artUrl", VariantType.STRING);
-                                if (art_val != null) entry.art_url = art_val.get_string();
-                            }
-                        } catch {}
-
-                        // Drop Stopped entries unconditionally. Chrome keeps
-                        // its MPRIS bus name alive after the media tab is
-                        // closed (PlaybackStatus="Stopped", stale mpris:artUrl
-                        // still present) - without this the dock item would
-                        // hang around with no playable content behind it.
-                        if (entry.status == "Stopped") continue;
-
-                        // Reuse existing texture when URL is unchanged
-                        Entry? prev = _by_app[entry.player_id];
-                        if (prev != null && prev.art_url == entry.art_url && prev.cover != null) {
-                            entry.cover = prev.cover;
-                        } else if (entry.art_url != null) {
-                            entry.cover = load_cover(entry.art_url, 64);
-                        }
-                        new_map[entry.player_id] = entry;
-                    } catch {}
+                    Entry? prev = _by_app[entry.player_id];
+                    if (prev != null && prev.art_url == entry.art_url && prev.cover != null) {
+                        entry.cover = prev.cover;
+                    } else if (entry.art_url != "") {
+                        entry.cover = yield load_cover(entry.art_url, 64);
+                    }
+                    new_map[entry.player_id] = entry;
                 }
             } catch {}
 
@@ -193,9 +201,14 @@ namespace MprisDock {
             }
             _by_app = new_map;
             if (different) this.changed("");
+            _poll_running = false;
+            if (_poll_again) {
+                _poll_again = false;
+                request_poll();
+            }
         }
 
-        private static Gdk.Texture? load_cover(string art_url, int size) {
+        private static async Gdk.Texture? load_cover(string art_url, int size) {
             try {
                 if (art_url.has_prefix("file://")) {
                     string path = GLib.Uri.unescape_string(art_url.substring(7));
@@ -206,9 +219,11 @@ namespace MprisDock {
                     var session = new Soup.Session();
                     session.timeout = 2;
                     var msg = new Soup.Message("GET", art_url);
-                    var stream = session.send(msg, null);
+                    var stream = yield session.send_async(msg,
+                        Priority.DEFAULT, null);
                     if (msg.status_code == 200) {
-                        var pb = new Gdk.Pixbuf.from_stream_at_scale(stream, size, size, true);
+                        var pb = yield new Gdk.Pixbuf.from_stream_at_scale_async(
+                            stream, size, size, true, null);
                         return Gdk.Texture.for_pixbuf(pb);
                     }
                 }

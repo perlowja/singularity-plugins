@@ -1,0 +1,8 @@
+[Plugin]
+Module=sensors
+Name=Sensors
+Description=Shows temperatures, CPU clock and usage in the panel
+Authors=Singularity Team
+Copyright=Copyright © 2026 Singularity Team
+Website=https://sinty.dev
+Builtin=false

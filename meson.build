@@ -23,6 +23,7 @@ if system_dep.type_name() == 'internal'
 endif
 
 subdir('status-monitor')
+subdir('sensors')
 subdir('notification-test')
 subdir('tray-icons')
 subdir('workspaces-indicator')

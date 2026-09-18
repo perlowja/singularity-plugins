@@ -1,0 +1,8 @@
+[Plugin]
+Module=wallpapers-stock
+Name=Stock Photo Wallpapers
+Description=Search and import wallpapers from Openverse and Unsplash
+Authors=Singularity Team
+Copyright=Copyright © 2025 Singularity Team
+Website=https://sinty.dev
+Builtin=true

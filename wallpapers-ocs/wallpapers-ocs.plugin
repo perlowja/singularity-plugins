@@ -1,0 +1,8 @@
+[Plugin]
+Module=wallpapers-ocs
+Name=OCS Network Wallpapers
+Description=Browse and import wallpapers from OCS networks (pling.com, opendesktop.org, kde-look.org)
+Authors=Singularity Team
+Copyright=Copyright © 2025 Singularity Team
+Website=https://sinty.dev
+Builtin=true

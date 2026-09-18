@@ -1,0 +1,8 @@
+[Plugin]
+Module=screensaver-hacks
+Name=Screensaver Hacks
+Description=Browse, preview, and launch fullscreen GL screensaver hacks
+Authors=Singularity Team
+Copyright=Copyright © 2026 Singularity Team
+Website=https://sinty.dev
+Builtin=true

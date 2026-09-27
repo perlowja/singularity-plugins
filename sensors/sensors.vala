@@ -34,7 +34,7 @@ public class SensorsPlugin : Object, Singularity.Plugin {
 }
 
 /**
- * SensorsIndicator — one compact chip in the panel, detail in a popover.
+ * SensorsIndicator - one compact chip in the panel, detail in a popover.
  *
  * Deliberately ONE panel item rather than a row of them: a machine can
  * expose a lot of sensors (a CIX Sky1 board reports five thermal zones; an
@@ -50,11 +50,7 @@ class SensorsIndicator : Gtk.Box {
     // Sensor counts vary by two orders of magnitude across platforms, so
     // the detail list is capped rather than unbounded.
     private const int MAX_ROWS_PER_GROUP = 6;
-    // Column count is derived from BOTH logical Gdk.Monitor geometry and
-    // the monitor's scale factor (see configure_detail_layout()), so a
-    // scaled HiDPI panel can use more columns than a same-logical-width
-    // native display; capped at 3 so the popover never dominates a huge
-    // display.
+    // Column count uses logical monitor geometry and is capped at three.
     private const int MAX_DETAIL_COLUMNS = 3;
     private const int DETAIL_COLUMN_WIDTH = 340;
     private const int DETAIL_COLUMN_SPACING = 18;
@@ -126,7 +122,10 @@ class SensorsIndicator : Gtk.Box {
             compact_rows_provider = new Gtk.CssProvider();
             compact_rows_provider.load_from_string(
                 "row.sensors-compact-row { min-height: 0; padding: 0; " +
-                "background: transparent; border: 0; box-shadow: none; }");
+                "background: transparent; border: 0; box-shadow: none; } " +
+                ".sensors-resource-section { " +
+                "border: 1px solid alpha(@text_color, 0.12); " +
+                "border-radius: 8px; padding: 8px 10px; margin-bottom: 4px; }");
             Gtk.StyleContext.add_provider_for_display(get_display(),
                 compact_rows_provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION);
         }
@@ -332,23 +331,10 @@ class SensorsIndicator : Gtk.Box {
             screen_height = geometry.height;
         }
 
-        // Base density on effective physical resolution rather than one
-        // logical-pixel breakpoint. A scaled HiDPI panel can therefore use
-        // more columns than a native low-resolution display with the same
-        // logical width, and a huge logical desktop on a non-scaled panel
-        // is capped by the logical calculation instead of over-widening.
-        int scale_factor = 1;
-        if (target_monitor != null) scale_factor = target_monitor.get_scale_factor();
-        int effective_width = screen_width * int.max(1, scale_factor);
-        int available_width = int.max(DETAIL_COLUMN_WIDTH, effective_width - DETAIL_SCREEN_MARGIN);
+        int available_width = int.max(DETAIL_COLUMN_WIDTH, screen_width - DETAIL_SCREEN_MARGIN);
         int density_slot = DETAIL_COLUMN_WIDTH * 2 + DETAIL_COLUMN_SPACING;
-        int physical_column_count = int.min(MAX_DETAIL_COLUMNS,
+        detail_column_count = int.min(MAX_DETAIL_COLUMNS,
             int.max(1, (available_width + DETAIL_COLUMN_SPACING) / density_slot));
-        int logical_width = int.max(DETAIL_COLUMN_WIDTH, screen_width - DETAIL_SCREEN_MARGIN);
-        int logical_column_count = int.max(1,
-            (logical_width + DETAIL_COLUMN_SPACING) / (DETAIL_COLUMN_WIDTH + DETAIL_COLUMN_SPACING));
-        detail_column_count = int.min(physical_column_count, logical_column_count);
-        detail_column_count = int.min(detail_column_count, MAX_DETAIL_COLUMNS);
 
         for (int i = 0; i < MAX_DETAIL_COLUMNS; i++) {
             detail_columns[i].visible = i < detail_column_count;
@@ -601,8 +587,6 @@ class SensorsIndicator : Gtk.Box {
 
     private Box begin_detail_section() {
         var section = new Box(Orientation.VERTICAL, 4);
-        // Bordered frame so stacked resource-pool sections in the same
-        // column read as distinct cards, not one continuous list.
         section.add_css_class("sensors-resource-section");
         detail_target = section;
         return section;

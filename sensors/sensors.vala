@@ -50,8 +50,9 @@ class SensorsIndicator : Gtk.Box {
     // Sensor counts vary by two orders of magnitude across platforms, so
     // the detail list is capped rather than unbounded.
     private const int MAX_ROWS_PER_GROUP = 6;
-    // Column count uses logical monitor geometry and is capped at three.
     private const int MAX_DETAIL_COLUMNS = 3;
+    private const int TWO_COLUMN_MIN_WIDTH = 1280;
+    private const int THREE_COLUMN_MIN_WIDTH = 1920;
     private const int DETAIL_COLUMN_WIDTH = 340;
     private const int DETAIL_COLUMN_SPACING = 18;
     private const int DETAIL_SCREEN_MARGIN = 96;
@@ -331,10 +332,8 @@ class SensorsIndicator : Gtk.Box {
             screen_height = geometry.height;
         }
 
-        int available_width = int.max(DETAIL_COLUMN_WIDTH, screen_width - DETAIL_SCREEN_MARGIN);
-        int density_slot = DETAIL_COLUMN_WIDTH * 2 + DETAIL_COLUMN_SPACING;
-        detail_column_count = int.min(MAX_DETAIL_COLUMNS,
-            int.max(1, (available_width + DETAIL_COLUMN_SPACING) / density_slot));
+        detail_column_count = screen_width >= THREE_COLUMN_MIN_WIDTH ? 3
+            : screen_width >= TWO_COLUMN_MIN_WIDTH ? 2 : 1;
 
         for (int i = 0; i < MAX_DETAIL_COLUMNS; i++) {
             detail_columns[i].visible = i < detail_column_count;

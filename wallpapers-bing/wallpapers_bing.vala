@@ -12,11 +12,6 @@ public void peas_register_types(TypeModule module) {
 
 namespace WallpapersBing {
 
-    /**
-     * Bing's daily wallpaper images, across every market. Requires the
-     * external `ncz-wallpaper-bing` helper, which is not shipped by plain
-     * Singularity -- this plugin is disabled by default.
-     */
     public class Provider : WallpaperHelperProvider, WallpaperProvider {
         // Set by choices() from the helper's own answer, never re-derived
         // from the config file -- see WallpaperBing.CONSOLIDATED_ID. False
@@ -32,7 +27,7 @@ namespace WallpapersBing {
         }
         public bool requires_credentials { get { return false; } }
         public bool supports_search { get { return false; } }
-        public Provider() { base("/usr/local/bin/ncz-wallpaper-bing"); }
+        public Provider() { base("singularity-wallpaper-bing"); }
         public async ArrayList<WallpaperProviderChoice> choices(string index, Cancellable? cancel) throws Error {
             var loaded = WallpaperBing.markets(yield command({helper, "markets"}, cancel, 30));
             // The helper is expected to always advertise the combined view
@@ -80,7 +75,7 @@ public class WallpapersBingPlugin : Object, Singularity.Plugin {
 
     public Gtk.Widget? get_settings_widget() {
         var box = new Box(Orientation.VERTICAL, 8);
-        var lbl = new Label(_("Adds Bing's daily wallpaper images to the wallpaper browser. Requires the ncz-wallpaper-bing helper."));
+        var lbl = new Label(_("Adds Bing's daily wallpaper images to the wallpaper browser. Requires the singularity-wallpaper-bing helper."));
         lbl.wrap = true;
         lbl.xalign = 0;
         box.append(lbl);

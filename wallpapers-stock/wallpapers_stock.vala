@@ -12,12 +12,6 @@ public void peas_register_types(TypeModule module) {
 
 namespace WallpapersStock {
 
-    /**
-     * Searchable stock-photo wallpapers (Openverse, Unsplash). Each network
-     * requires its own external helper (`ncz-wallpaper-openverse` /
-     * `ncz-wallpaper-unsplash`), not shipped by plain Singularity -- this
-     * plugin is disabled by default.
-     */
     public class Provider : WallpaperHelperProvider, WallpaperProvider {
         private string provider_id;
         public string id { get { return provider_id; } }
@@ -62,8 +56,8 @@ public class WallpapersStockPlugin : Object, Singularity.Plugin {
 
     public void activate(PluginContext ctx) {
         this.context = ctx;
-        openverse = new WallpapersStock.Provider("openverse", "/usr/local/bin/ncz-wallpaper-openverse");
-        unsplash = new WallpapersStock.Provider("unsplash", "/usr/local/bin/ncz-wallpaper-unsplash");
+        openverse = new WallpapersStock.Provider("openverse", "singularity-wallpaper-openverse");
+        unsplash = new WallpapersStock.Provider("unsplash", "singularity-wallpaper-unsplash");
         context.add_wallpaper_provider(openverse);
         context.add_wallpaper_provider(unsplash);
     }
@@ -81,7 +75,7 @@ public class WallpapersStockPlugin : Object, Singularity.Plugin {
 
     public Gtk.Widget? get_settings_widget() {
         var box = new Box(Orientation.VERTICAL, 8);
-        var lbl = new Label(_("Adds searchable Openverse and Unsplash wallpapers to the wallpaper browser. Requires the ncz-wallpaper-openverse and ncz-wallpaper-unsplash helpers."));
+        var lbl = new Label(_("Adds searchable Openverse and Unsplash wallpapers to the wallpaper browser. Requires the singularity-wallpaper-openverse and singularity-wallpaper-unsplash helpers."));
         lbl.wrap = true;
         lbl.xalign = 0;
         box.append(lbl);

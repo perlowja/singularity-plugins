@@ -12,12 +12,6 @@ public void peas_register_types(TypeModule module) {
 
 namespace WallpapersOcs {
 
-    /**
-     * Wallpapers from OCS networks (pling.com, opendesktop.org,
-     * kde-look.org, ...). Requires the external `ncz-wallpaper-ocs` helper
-     * (shipped by distros that provide OCS access, not by plain Singularity)
-     * -- exactly like the Tailscale VPN plugin needs a running tailscaled.
-     */
     public class Provider : WallpaperHelperProvider, WallpaperProvider {
         // OCS answers `pagesize` items per request and its own default is 10,
         // not the ~50 the aggregate crawl was written against. Ask for the
@@ -29,7 +23,7 @@ namespace WallpapersOcs {
         public string display_name { owned get { return _("OCS Network"); } }
         public bool requires_credentials { get { return false; } }
         public bool supports_search { get { return false; } }
-        public Provider() { base("/usr/local/bin/ncz-wallpaper-ocs"); }
+        public Provider() { base("singularity-wallpaper-ocs"); }
         public async ArrayList<WallpaperProviderChoice> choices(string index, Cancellable? cancel) throws Error {
             return WallpaperOcs.categories(yield command({helper, "index"}, cancel, 90), id);
         }
@@ -80,7 +74,7 @@ public class WallpapersOcsPlugin : Object, Singularity.Plugin {
 
     public Gtk.Widget? get_settings_widget() {
         var box = new Box(Orientation.VERTICAL, 8);
-        var lbl = new Label(_("Adds OCS network wallpapers (pling.com, opendesktop.org, kde-look.org) to the wallpaper browser. Requires the ncz-wallpaper-ocs helper."));
+        var lbl = new Label(_("Adds OCS network wallpapers (pling.com, opendesktop.org, kde-look.org) to the wallpaper browser. Requires the singularity-wallpaper-ocs helper."));
         lbl.wrap = true;
         lbl.xalign = 0;
         box.append(lbl);

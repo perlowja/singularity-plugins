@@ -72,9 +72,7 @@ class SensorsIndicator : Gtk.Box {
     private SensorsContrast.Palette panel_palette;
     private SensorsContrast.Palette popup_palette;
     private uint contrast_source = 0;
-    private bool panel_backed = false;
-    private bool popup_backed = false;
-    private Gtk.WidgetPaintable? watched_paintable = null;
+    private Gtk.Widget? watched_native = null;
     private ulong watched_handler = 0;
     private ulong[] settings_handlers = {};
     private SensorMonitor monitor;
@@ -428,75 +426,12 @@ class SensorsIndicator : Gtk.Box {
             lookup_theme_color("accent_color"));
     }
 
-    private SensorsContrast.Color? sample_background(Gtk.Widget target, int pad, out bool translucent) {
-        translucent = false;
-        var native = target.get_native();
-        var native_widget = native as Gtk.Widget;
-        if (native == null || native_widget == null || !target.get_mapped()) {
-            return null;
+    private SensorsContrast.Color panel_background() {
+        var native = get_native() as Gtk.Widget;
+        if (native == null || native.has_css_class("flat-panel")) {
+            return theme_background();
         }
-        Graphene.Rect inner;
-        if (!target.compute_bounds(native_widget, out inner)) {
-            return null;
-        }
-        var renderer = native.get_renderer();
-        if (renderer == null) {
-            return null;
-        }
-        float native_w = native_widget.get_width();
-        float native_h = native_widget.get_height();
-        float x0 = float.max(0.0f, inner.origin.x - pad);
-        float y0 = float.max(0.0f, inner.origin.y - pad);
-        float x1 = float.min(native_w, inner.origin.x + inner.size.width + pad);
-        float y1 = float.min(native_h, inner.origin.y + inner.size.height + pad);
-        if (x1 - x0 < 2.0f || y1 - y0 < 2.0f) {
-            return null;
-        }
-        var snapshot = new Gtk.Snapshot();
-        new Gtk.WidgetPaintable(native_widget).snapshot(snapshot, native_w, native_h);
-        Gsk.RenderNode? node = snapshot.free_to_node();
-        if (node == null) {
-            return null;
-        }
-        var viewport = Graphene.Rect().init(x0, y0, x1 - x0, y1 - y0);
-        Gdk.Texture texture = renderer.render_texture(node, viewport);
-        int tw = texture.get_width();
-        int th = texture.get_height();
-        var downloader = new Gdk.TextureDownloader(texture);
-        downloader.set_format(Gdk.MemoryFormat.R8G8B8A8);
-        size_t stride;
-        Bytes bytes = downloader.download_bytes(out stride);
-        unowned uint8[] data = bytes.get_data();
-        double sx = tw / (double) (x1 - x0);
-        double sy = th / (double) (y1 - y0);
-        int ix0 = (int) ((inner.origin.x - x0) * sx);
-        int iy0 = (int) ((inner.origin.y - y0) * sy);
-        int ix1 = (int) ((inner.origin.x + inner.size.width - x0) * sx);
-        int iy1 = (int) ((inner.origin.y + inner.size.height - y0) * sy);
-        var under = theme_background();
-        var samples = new SensorsContrast.Color[0];
-        double alpha_sum = 0.0;
-        int step = int.max(1, (tw * th) / 400);
-        for (int i = 0; i < tw * th; i += step) {
-            int px = i % tw;
-            int py = i / tw;
-            if (px >= ix0 && px < ix1 && py >= iy0 && py < iy1) {
-                continue;
-            }
-            size_t o = py * stride + px * 4;
-            if (o + 3 >= data.length) {
-                continue;
-            }
-            alpha_sum += data[o + 3] / 255.0;
-            samples += SensorsContrast.composite(
-                SensorsContrast.Color(data[o] / 255.0, data[o + 1] / 255.0,
-                                      data[o + 2] / 255.0, data[o + 3] / 255.0), under);
-        }
-        if (samples.length == 0) {
-            return null;
-        }
-        translucent = alpha_sum / samples.length < 0.95;
-        return SensorsContrast.median_by_luminance(samples);
+        return native.has_css_class("light-bg") ? SensorsContrast.near_white() : SensorsContrast.near_black();
     }
 
     private void schedule_contrast_refresh() {
@@ -510,49 +445,23 @@ class SensorsIndicator : Gtk.Box {
         });
     }
 
-    private SensorsContrast.Color resolve_surface(Gtk.Widget target, int pad, out bool scrim) {
-        var fallback = theme_background();
-        bool translucent;
-        var sampled = sample_background(target, pad, out translucent);
-        scrim = translucent;
-        if (translucent) {
-            return SensorsContrast.scrim_for(fallback);
-        }
-        return sampled ?? fallback;
-    }
-
     private void refresh_contrast() {
-        bool panel_scrim;
-        var new_panel = build_palette(resolve_surface(button, 6, out panel_scrim));
-        var new_popup = new_panel;
-        bool popup_scrim = false;
-        Popover? popover = button.popover;
-        if (popover != null && popover.visible) {
-            new_popup = build_palette(resolve_surface(detail_box, 8, out popup_scrim));
-        } else {
-            new_popup = build_palette(theme_background());
-        }
-        bool changed = !new_panel.equals(panel_palette) || !new_popup.equals(popup_palette)
-            || panel_scrim != panel_backed || popup_scrim != popup_backed;
+        var new_panel = build_palette(panel_background());
+        var new_popup = build_palette(theme_background());
         bool panel_changed = !new_panel.equals(panel_palette);
+        bool changed = panel_changed || !new_popup.equals(popup_palette);
         panel_palette = new_panel;
         popup_palette = new_popup;
-        panel_backed = panel_scrim;
-        popup_backed = popup_scrim;
         if (!changed) {
             return;
         }
         apply_contrast_css();
+        Popover? popover = button.popover;
         if (panel_changed) {
             on_updated();
         } else if (popover != null && popover.visible) {
             rebuild_details();
         }
-    }
-
-    private static string scrim_css(SensorsContrast.Palette p) {
-        return "background-color: rgba(%d, %d, %d, 0.92); border-radius: 8px; ".printf(
-            (int) Math.round(p.bg.r * 255), (int) Math.round(p.bg.g * 255), (int) Math.round(p.bg.b * 255));
     }
 
     private void apply_contrast_css() {
@@ -562,9 +471,7 @@ class SensorsIndicator : Gtk.Box {
         var pn = panel_palette;
         var pp = popup_palette;
         contrast_provider.load_from_string(
-            ".sensors-summary { color: %s; opacity: 1; %s}\n".printf(
-                pn.neutral.to_hex(), panel_backed ? scrim_css(pn) + "padding: 2px 8px; " : "") +
-            ".sensors-detail { %s}\n".printf(popup_backed ? scrim_css(pp) : "") +
+            ".sensors-summary { color: %s; opacity: 1; }\n".printf(pn.neutral.to_hex()) +
             ".sensors-detail label { color: %s; opacity: 1; }\n".printf(pp.neutral.to_hex()) +
             ".sensors-detail .sensors-muted, .sensors-detail .sensors-muted label { color: %s; opacity: 1; }\n".printf(pp.muted.to_hex()) +
             ".sensors-detail label.sensors-hot { color: %s; font-weight: 600; opacity: 1; }\n".printf(pp.hot.to_hex()) +
@@ -573,20 +480,19 @@ class SensorsIndicator : Gtk.Box {
 
     private void watch_panel_background() {
         unwatch_panel_background();
-        var native = get_native() as Gtk.Widget;
-        if (native == null) {
+        watched_native = get_native() as Gtk.Widget;
+        if (watched_native == null) {
             return;
         }
-        watched_paintable = new Gtk.WidgetPaintable(native);
-        watched_handler = watched_paintable.invalidate_contents.connect(schedule_contrast_refresh);
+        watched_handler = watched_native.notify["css-classes"].connect(schedule_contrast_refresh);
         schedule_contrast_refresh();
     }
 
     private void unwatch_panel_background() {
-        if (watched_paintable != null && watched_handler != 0) {
-            watched_paintable.disconnect(watched_handler);
+        if (watched_native != null && watched_handler != 0) {
+            watched_native.disconnect(watched_handler);
         }
-        watched_paintable = null;
+        watched_native = null;
         watched_handler = 0;
     }
 

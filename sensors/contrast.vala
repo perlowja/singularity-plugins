@@ -61,11 +61,6 @@ namespace SensorsContrast {
         return Color(0.96, 0.96, 0.96);
     }
 
-    public Color scrim_for(Color theme_bg) {
-        bool dark = relative_luminance(theme_bg) < 0.4;
-        return dark ? Color(0.09, 0.09, 0.10) : Color(0.96, 0.96, 0.97);
-    }
-
     public Color neutral_for(Color bg) {
         Color dark = near_black();
         Color light = near_white();

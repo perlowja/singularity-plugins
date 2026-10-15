@@ -82,13 +82,15 @@ namespace Singularity.ExeIcon {
             }
         }
 
+        private const uint32 MAX_ICON = 4 << 20;
+
         private static uint16 ru16(uint8[] d, uint off) throws PeError {
-            if (off + 2 > d.length) throw new PeError.MALFORMED("u16 out of bounds");
+            if ((uint64) off + 2 > d.length) throw new PeError.MALFORMED("u16 out of bounds");
             return (uint16) (d[off] | (d[off + 1] << 8));
         }
 
         private static uint32 ru32(uint8[] d, uint off) throws PeError {
-            if (off + 4 > d.length) throw new PeError.MALFORMED("u32 out of bounds");
+            if ((uint64) off + 4 > d.length) throw new PeError.MALFORMED("u32 out of bounds");
             return (uint32) (d[off] | (d[off + 1] << 8) | (d[off + 2] << 16) | (d[off + 3] << 24));
         }
 
@@ -132,30 +134,31 @@ namespace Singularity.ExeIcon {
 
         private Gdk.Pixbuf? extract_pixbuf(string path) throws Error {
             var mf = new GLib.MappedFile(path, false);
+            if (mf.get_length() > int.MAX) return null;
             var mbytes = mf.get_bytes();
             unowned uint8[] d = mbytes.get_data();
             if (d == null || d.length < 0x40) return null;
 
             if (d[0] != 'M' || d[1] != 'Z') return null;
             uint32 e_lfanew = ru32(d, 0x3C);
-            if (e_lfanew + 24 > d.length) return null;
+            if ((uint64) e_lfanew + 24 > d.length) return null;
             if (ru32(d, e_lfanew) != 0x00004550) return null;
 
             uint16 num_sections = ru16(d, e_lfanew + 6);
             uint16 size_opt = ru16(d, e_lfanew + 20);
-            uint sec_off = e_lfanew + 24 + size_opt;
+            uint64 sec_off = (uint64) e_lfanew + 24 + size_opt;
 
             uint32 rsrc_va = 0;
             uint rsrc_ptr = 0;
             bool found = false;
             for (uint i = 0; i < num_sections; i++) {
-                uint s = sec_off + i * 40;
+                uint64 s = sec_off + (uint64) i * 40;
                 if (s + 40 > d.length) break;
                 bool is_rsrc = d[s] == '.' && d[s + 1] == 'r' && d[s + 2] == 's'
                     && d[s + 3] == 'r' && d[s + 4] == 'c';
                 if (is_rsrc) {
-                    rsrc_va = ru32(d, s + 12);
-                    rsrc_ptr = ru32(d, s + 20);
+                    rsrc_va = ru32(d, (uint) s + 12);
+                    rsrc_ptr = ru32(d, (uint) s + 20);
                     found = true;
                     break;
                 }
@@ -186,8 +189,9 @@ namespace Singularity.ExeIcon {
 
             uint16 real_count = 0;
             for (uint16 i = 0; i < count; i++) {
-                uint ge = grp_foff + 6 + i * 14;
-                if (ge + 14 > d.length) break;
+                uint64 ge64 = (uint64) grp_foff + 6 + (uint64) i * 14;
+                if (ge64 + 14 > d.length) break;
+                uint ge = (uint) ge64;
                 uint8 b_width = d[ge];
                 uint8 b_height = d[ge + 1];
                 uint8 b_colors = d[ge + 2];
@@ -204,7 +208,7 @@ namespace Singularity.ExeIcon {
                 uint icon_foff;
                 uint32 icon_size;
                 if (!resolve_leaf(d, rsrc_ptr, rsrc_va, icon_leaf, out icon_foff, out icon_size)) continue;
-                if (icon_size == 0) continue;
+                if (icon_size == 0 || icon_size > MAX_ICON) continue;
 
                 uint8 de_buf[16];
                 de_buf[0] = b_width;

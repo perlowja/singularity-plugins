@@ -312,7 +312,7 @@ public class MediaControlsPlugin : Object, Singularity.Plugin {
                 var session = new Soup.Session();
                 session.timeout = 5;
                 var msg = new Soup.Message("GET", url);
-                var bytes = yield session.send_and_read_async(msg, Priority.DEFAULT, null);
+                var bytes = yield Singularity.HttpBody.read(session, msg, 16 * 1024 * 1024);
                 if (bytes != null) {
                     var pb = new Gdk.Pixbuf.from_stream_at_scale(
                         new GLib.MemoryInputStream.from_bytes(bytes), 128, 128, true, null);

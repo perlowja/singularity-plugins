@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "plugins": [
+    {
+      "id": "html-preview",
+      "module": "html-preview",
+      "name": "HTML Preview",
+      "summary": "A live preview of HTML files next to the editor",
+      "author": "Singularity",
+      "app": "dev.sinty.edit",
+      "host_dir": "edit",
+      "version": "1.0.0",
+      "icon": "text-html",
+      "bundles": {
+        "x86_64": {
+          "url": "https://github.com/singularityos-lab/singularity-plugins/releases/download/html-preview-1.0.0/html-preview-1.0.0-x86_64.tar.gz",
+          "sha256": "0d06c464c1044204b40bb1830cc7930d70d68ba7d467f4a6ec7125584b8a0b4a"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+[Plugin]
+Module=html-preview
+Name=HTML Preview
+Description=A live preview of HTML files next to the editor
+Icon=text-html
+X-Singularity-Host=dev.sinty.edit
